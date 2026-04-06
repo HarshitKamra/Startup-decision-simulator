@@ -1,0 +1,26 @@
+version: "1.0"
+name: startup-decision-simulator
+description: Founder-agent benchmark for startup strategic decision-making under budget and churn constraints.
+entrypoint: env.environment:StartupDecisionEnv
+
+models:
+  observation: env.models:Observation
+  action: env.models:Action
+  reward: env.models:Reward
+
+tasks:
+  - id: easy_support_optimization
+    difficulty: easy
+    description: Improve sentiment and churn; grader rewards balanced support usage and low invalid penalties.
+    grader: env.grader:grade_easy
+    score_range: [0.0, 1.0]
+  - id: medium_pricing_strategy
+    difficulty: medium
+    description: Balanced profit, revenue, and retention; Pareto-style grader reduces one-axis gaming.
+    grader: env.grader:grade_medium
+    score_range: [0.0, 1.0]
+  - id: hard_startup_survival
+    difficulty: hard
+    description: Survival with partial credit; runway, growth, and churn under tight cash.
+    grader: env.grader:grade_hard
+    score_range: [0.0, 1.0]

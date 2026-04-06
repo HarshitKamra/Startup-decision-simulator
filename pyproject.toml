@@ -1,0 +1,8 @@
+[project]
+name = "startup-decision-simulator"
+version = "1.0.0"
+description = "OpenEnv Founder Agent benchmark: startup strategy under cash, churn, and competition."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["openenv", "reinforcement-learning", "benchmark", "agent", "startup"]
