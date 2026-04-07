@@ -4,7 +4,7 @@ import argparse
 import json
 import os
 import sys
-from typing import Any, Callable, Dict, List, TextIO
+from typing import Any, Callable, Dict, List
 
 from openai import OpenAI
 
@@ -13,12 +13,18 @@ from env.grader import grade_task
 from env.policies import RUBRIC_HINTS, heuristic_baseline_policy
 from env.tasks import TASKS, get_task_config
 
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+HF_TOKEN = os.getenv("HF_TOKEN")
+# Optional if your evaluator uses local docker image mode.
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+
 LogFn = Callable[..., None]
 
 
 def build_client() -> OpenAI | None:
-    base_url = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-    token = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY", "")
+    base_url = API_BASE_URL
+    token = HF_TOKEN or os.getenv("OPENAI_API_KEY", "")
     if not token:
         return None
     return OpenAI(base_url=base_url, api_key=token)
@@ -114,7 +120,7 @@ def run_task(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Startup Decision Simulator — OpenEnv inference / benchmark")
-    parser.add_argument("--model", default=os.getenv("MODEL_NAME", "gpt-4o-mini"), help="Chat model when API key is set")
+    parser.add_argument("--model", default=MODEL_NAME, help="Chat model when API key is set")
     parser.add_argument(
         "--baseline-only",
         action="store_true",
@@ -136,11 +142,9 @@ def main() -> None:
 
     model_name = args.model
     client: OpenAI | None = None if args.baseline_only else build_client()
-    if client is None and not args.baseline_only:
-        log("[INFO] No HF_TOKEN/OPENAI_API_KEY; using heuristic baseline policy.")
 
     rows: List[Dict[str, Any]] = []
-    for task_id in sorted(TASKS.keys()):
+    for task_id in TASKS.keys():
         rows.append(run_task(task_id, client, model_name, log=log))
 
     scores = {r["task_id"]: r["score"] for r in rows}
