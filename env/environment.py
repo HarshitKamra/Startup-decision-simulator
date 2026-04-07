@@ -54,6 +54,8 @@ class StartupDecisionEnv:
         competitor_price: float = 45.0,
         initial_churn_rate: float = 0.12,
         noise_scale: float = 0.04,
+        scenario_name: str = "saas_core",
+        shock_schedule: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self.seed = seed
         self.max_steps = max_steps
@@ -63,6 +65,8 @@ class StartupDecisionEnv:
         self.initial_competitor_price = competitor_price
         self.initial_churn_rate = initial_churn_rate
         self.noise_scale = noise_scale
+        self.scenario_name = scenario_name
+        self.shock_schedule = list(shock_schedule or [])
         self._rng = random.Random(seed)
         self._delayed_effects: Deque[Tuple[int, Dict[str, float]]] = deque()
         self._feedback_skip_until_step: int = 0
@@ -87,6 +91,12 @@ class StartupDecisionEnv:
         self._action_streak = 0
         self._marketing_streak = 0
         self._consecutive_support_response = 0
+        self.current_alerts: List[str] = []
+        self._shocks_by_step: Dict[int, List[Dict[str, Any]]] = {}
+        for event in self.shock_schedule:
+            step = int(event.get("step", -1))
+            if step >= 0:
+                self._shocks_by_step.setdefault(step, []).append(event)
 
     def _sample_feedback(self, size: int = 2) -> List[str]:
         feedback: List[str] = []
@@ -151,6 +161,8 @@ class StartupDecisionEnv:
             "customer_feedback": copy.deepcopy(self.customer_feedback),
             "feature_requests": copy.deepcopy(self.feature_requests),
             "implemented_features": copy.deepcopy(self.implemented_features),
+            "scenario_name": self.scenario_name,
+            "current_alerts": copy.deepcopy(self.current_alerts),
             "step_count": self.step_count,
             "max_steps": self.max_steps,
         }
@@ -168,6 +180,7 @@ class StartupDecisionEnv:
             customer_feedback=copy.deepcopy(self.customer_feedback),
             competitor_price=round(self.competitor_price, 2),
             feature_requests=copy.deepcopy(self.feature_requests),
+            current_alerts=copy.deepcopy(self.current_alerts),
             step_count=self.step_count,
             max_steps=self.max_steps,
             sentiment_score=round(self._sentiment_score(), 4),
@@ -177,6 +190,39 @@ class StartupDecisionEnv:
             support_cooldown_steps=sup_cd,
             implemented_feature_count=len(self.implemented_features),
         )
+
+    def _apply_scenario_shocks(self) -> List[str]:
+        triggered: List[str] = []
+        for event in self._shocks_by_step.get(self.step_count, []):
+            kind = str(event.get("kind", "generic_shock"))
+            severity = max(0.0, min(1.0, float(event.get("severity", 0.5))))
+            if kind == "competitor_discount":
+                self.competitor_price = max(15.0, self.competitor_price - (1.0 + 3.0 * severity))
+                self.churn_rate = min(0.6, self.churn_rate + 0.01 + 0.02 * severity)
+                triggered.append("competitor_discount")
+            elif kind == "incident_outage":
+                self.churn_rate = min(0.6, self.churn_rate + 0.02 + 0.03 * severity)
+                self.users = max(0, self.users - int(self.users * (0.02 + 0.03 * severity)))
+                triggered.append("incident_outage")
+            elif kind == "support_backlog":
+                self.churn_rate = min(0.6, self.churn_rate + 0.015 + 0.02 * severity)
+                triggered.append("support_backlog")
+            elif kind == "cost_spike":
+                self.cash -= 350.0 + 500.0 * severity
+                triggered.append("cost_spike")
+            elif kind == "investor_delay":
+                self.cash -= 500.0 + 900.0 * severity
+                self.churn_rate = min(0.6, self.churn_rate + 0.005 + 0.015 * severity)
+                triggered.append("investor_delay")
+            elif kind == "word_of_mouth_bump":
+                self.users += int(3 + 8 * severity)
+                self.churn_rate = max(0.01, self.churn_rate - (0.006 + 0.01 * severity))
+                triggered.append("word_of_mouth_bump")
+        if triggered:
+            self.current_alerts = triggered
+        else:
+            self.current_alerts = []
+        return triggered
 
     def step(self, action: Action | Dict[str, Any]) -> Tuple[Observation, Reward, bool, Dict[str, Any]]:
         action_invalid_schema = False
@@ -214,6 +260,7 @@ class StartupDecisionEnv:
         action_note = ""
         loop_penalty = 0.0
         edge_breakdown: Dict[str, float] = {}
+        triggered_shocks = self._apply_scenario_shocks()
 
         self._apply_delayed_effects()
 
@@ -459,6 +506,8 @@ class StartupDecisionEnv:
             "action_streak": self._action_streak,
             "edge_penalties": edge_breakdown,
             "invalid_schema": action_invalid_schema,
+            "triggered_shocks": triggered_shocks,
+            "scenario_name": self.scenario_name,
         }
         if self.cash <= 0:
             info["terminal_reason"] = "bankrupt"

@@ -23,6 +23,10 @@ class Observation(BaseModel):
     customer_feedback: List[str] = Field(default_factory=list)
     competitor_price: float = Field(..., gt=0.0)
     feature_requests: List[str] = Field(default_factory=list)
+    current_alerts: List[str] = Field(
+        default_factory=list,
+        description="Active market/operational alerts injected by deterministic scenario events.",
+    )
     step_count: int = Field(..., ge=0)
     max_steps: int = Field(..., ge=1)
     sentiment_score: float = Field(

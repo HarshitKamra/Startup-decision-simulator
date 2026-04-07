@@ -58,14 +58,47 @@ def heuristic_baseline_policy(
         return avoid_repeat({"action_type": "adjust_price", "value": max(24.0, min(80.0, competitor_price - 0.8))})
 
     if task_id == "medium_pricing_strategy":
-        if (churn > 0.15 or sentiment < -0.1) and can_respond() and last_action != "respond_to_feedback":
+        alerts = set(observation.get("current_alerts", []))
+        under_discount_pressure = "competitor_discount" in alerts
+        under_cost_spike = "cost_spike" in alerts
+
+        if (churn > 0.135 or sentiment < -0.08 or under_discount_pressure) and can_respond() and last_action != "respond_to_feedback":
             return {"action_type": "respond_to_feedback", "payload": "retention_campaign"}
-        if requests and churn > 0.10 and cash > 5600 and step % 3 == 1 and last_action != "add_feature":
+
+        # Feature investment only when runway is healthy and the market is stable.
+        if (
+            requests
+            and churn > 0.095
+            and cash > 7000
+            and runway > 10.0
+            and not under_cost_spike
+            and step % 4 == 1
+            and last_action != "add_feature"
+        ):
             return {"action_type": "add_feature", "payload": requests[0]}
-        if cash > 5200 and step % 4 == 0 and last_action != "run_marketing":
-            return {"action_type": "run_marketing", "value": 1150.0}
-        target = competitor_price - (1.2 if churn > 0.105 else 0.55)
-        return avoid_repeat({"action_type": "adjust_price", "value": max(26.0, min(92.0, target))})
+
+        # Keep marketing moderate to avoid fatigue/overspend penalties.
+        if (
+            cash > 8000
+            and runway > 11.5
+            and step % 5 == 0
+            and churn < 0.12
+            and not under_discount_pressure
+            and last_action != "run_marketing"
+        ):
+            return {"action_type": "run_marketing", "value": 780.0}
+
+        # Pricing should track competitor but avoid sudden changes that trigger penalties.
+        if under_discount_pressure:
+            target = competitor_price - 0.65
+        elif churn > 0.11:
+            target = competitor_price - 0.95
+        else:
+            target = competitor_price - 0.4
+        current_price = observation.get("price", target)
+        max_step_change = 2.4
+        bounded_target = max(current_price - max_step_change, min(current_price + max_step_change, target))
+        return avoid_repeat({"action_type": "adjust_price", "value": max(27.0, min(88.0, bounded_target))})
 
     if task_id == "hard_startup_survival":
         if (churn > 0.155 or sentiment < -0.12) and can_respond():

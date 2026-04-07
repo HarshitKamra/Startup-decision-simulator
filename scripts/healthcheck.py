@@ -47,6 +47,8 @@ def main() -> int:
             initial_price=cfg.initial_price,
             competitor_price=cfg.competitor_price,
             initial_churn_rate=cfg.initial_churn_rate,
+            scenario_name=cfg.scenario_name,
+            shock_schedule=cfg.shock_schedule,
         )
         obs = env.reset()
         history: list[dict] = []
@@ -70,6 +72,8 @@ def main() -> int:
             initial_price=cfg.initial_price,
             competitor_price=cfg.competitor_price,
             initial_churn_rate=cfg.initial_churn_rate,
+            scenario_name=cfg.scenario_name,
+            shock_schedule=cfg.shock_schedule,
         )
         env.reset()
         actions = []
@@ -95,6 +99,8 @@ def main() -> int:
             initial_price=cfg.initial_price,
             competitor_price=cfg.competitor_price,
             initial_churn_rate=cfg.initial_churn_rate,
+            scenario_name=cfg.scenario_name,
+            shock_schedule=cfg.shock_schedule,
         )
         obs = env.reset()
         actions = []
@@ -154,6 +160,8 @@ def _rollout_actions(task_id: str, policy) -> list[dict]:
         initial_price=cfg.initial_price,
         competitor_price=cfg.competitor_price,
         initial_churn_rate=cfg.initial_churn_rate,
+        scenario_name=cfg.scenario_name,
+        shock_schedule=cfg.shock_schedule,
     )
     obs = env.reset()
     actions = []

@@ -31,6 +31,8 @@ def run_episode(task_id: str, actions: Iterable[Dict[str, Any] | Action]) -> Tup
         initial_price=cfg.initial_price,
         competitor_price=cfg.competitor_price,
         initial_churn_rate=cfg.initial_churn_rate,
+        scenario_name=cfg.scenario_name,
+        shock_schedule=cfg.shock_schedule,
     )
 
     obs = env.reset()

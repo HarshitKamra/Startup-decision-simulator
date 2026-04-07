@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List
 
 from openai import OpenAI
@@ -83,18 +86,39 @@ def run_task(
         initial_price=cfg.initial_price,
         competitor_price=cfg.competitor_price,
         initial_churn_rate=cfg.initial_churn_rate,
+        scenario_name=cfg.scenario_name,
+        shock_schedule=cfg.shock_schedule,
     )
     obs = env.reset()
     action_history: List[Dict[str, Any]] = []
     sum_reward = 0.0
+    decision_lifts: List[float] = []
+    trace: List[Dict[str, Any]] = []
 
     log(f"[START] task={task_id} seed={cfg.seed} max_steps={cfg.max_steps}")
     for step in range(cfg.max_steps):
         obs_dict = obs.model_dump()
         action = get_action_from_model(client, model_name, task_id, obs_dict, step, action_history)
         action_history.append(action)
+        cf_env = copy.deepcopy(env)
+        _, cf_reward, _, _ = cf_env.step({"action_type": "do_nothing"})
         obs, reward, done, info = env.step(action)
         sum_reward += reward.total
+        lift = reward.total - cf_reward.total
+        decision_lifts.append(lift)
+        trace.append(
+            {
+                "step": step,
+                "task_id": task_id,
+                "scenario_name": cfg.scenario_name,
+                "action": action,
+                "reward": reward.model_dump(),
+                "counterfactual_do_nothing_reward": cf_reward.total,
+                "decision_lift": round(lift, 6),
+                "observation": obs.model_dump(),
+                "info": info,
+            }
+        )
         log(
             f"[STEP] task={task_id} step={step} action={action.get('action_type')} "
             f"reward={reward.total:.6f} cash={obs.cash:.2f} users={obs.users} "
@@ -108,13 +132,16 @@ def run_task(
     log(f"[END] task={task_id} score={score:.6f} steps={len(action_history)}")
     return {
         "task_id": task_id,
+        "scenario_name": cfg.scenario_name,
         "score": score,
         "steps": len(action_history),
         "sum_reward": round(sum_reward, 6),
+        "avg_decision_lift": round(sum(decision_lifts) / max(1, len(decision_lifts)), 6),
         "seed": cfg.seed,
         "max_steps": cfg.max_steps,
         "llm_used": client is not None,
         "model_name": model_name if client else None,
+        "trace": trace,
     }
 
 
@@ -128,6 +155,11 @@ def main() -> None:
     )
     parser.add_argument("--json", action="store_true", help="Write final summary JSON to stdout; logs go to stderr")
     parser.add_argument("-o", "--output", default=os.getenv("BENCHMARK_OUTPUT"), help="Also write JSON summary to this path")
+    parser.add_argument(
+        "--trace-dir",
+        default="artifacts",
+        help="Directory for trajectory traces and markdown report.",
+    )
     args = parser.parse_args()
 
     log: LogFn
@@ -151,12 +183,15 @@ def main() -> None:
     average = sum(scores.values()) / len(scores)
     log(f"[END] aggregate_score={average:.6f} scores={json.dumps(scores, sort_keys=True)}")
 
+    public_rows = [{k: v for k, v in row.items() if k != "trace"} for row in rows]
     summary = {
         "project": "startup-decision-simulator",
         "aggregate_score": round(average, 6),
-        "per_task": rows,
+        "avg_decision_lift": round(sum(r["avg_decision_lift"] for r in public_rows) / len(public_rows), 6),
+        "per_task": public_rows,
         "mode": "heuristic" if client is None else "llm",
         "model_name": model_name if client else None,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     json_str = json.dumps(summary, indent=2 if args.json else None, sort_keys=True)
     if args.json:
@@ -165,6 +200,33 @@ def main() -> None:
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(json_str if args.json else json.dumps(summary, indent=2, sort_keys=True))
             f.write("\n")
+    trace_dir = Path(args.trace_dir)
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    for row in rows:
+        out = trace_dir / f"{row['task_id']}_trace.jsonl"
+        with out.open("w", encoding="utf-8") as f:
+            for ev in row["trace"]:
+                f.write(json.dumps(ev, sort_keys=True))
+                f.write("\n")
+    report_lines = [
+        "# Startup Decision Simulator Benchmark Report",
+        "",
+        f"- Generated (UTC): {summary['generated_at_utc']}",
+        f"- Mode: {summary['mode']}",
+        f"- Aggregate score: {summary['aggregate_score']:.6f}",
+        f"- Avg decision lift vs do_nothing: {summary['avg_decision_lift']:.6f}",
+        "",
+        "## Per-task",
+        "",
+        "| Task | Scenario | Score | Steps | Sum reward | Avg decision lift |",
+        "|------|----------|-------|-------|------------|-------------------|",
+    ]
+    for row in rows:
+        report_lines.append(
+            f"| {row['task_id']} | {row['scenario_name']} | {row['score']:.6f} | "
+            f"{row['steps']} | {row['sum_reward']:.6f} | {row['avg_decision_lift']:.6f} |"
+        )
+    (trace_dir / "summary_report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

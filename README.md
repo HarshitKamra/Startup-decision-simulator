@@ -21,6 +21,7 @@ CI (optional): push to GitHub and use `.github/workflows/ci.yml` — installs de
 |------|--------|
 | **Not another triage bot** | Multi-step **economics + operations**: pricing, product latency, marketing burn, support cooldowns, competitor dynamics. |
 | **Judge-friendly** | Deterministic **\[0,1\] graders**, **dense reward**, **rich observations** aligned with grading signals, **edge-case penalties** documented in `info["edge_penalties"]`. |
+| **Evidence-driven** | Built-in **counterfactual decision lift** (`actual_reward - do_nothing_reward`) plus per-task JSONL traces and markdown benchmark report in `artifacts/`. |
 | **Works without secrets** | **Heuristic baseline** in `env/policies.py` scores strongly; LLM is optional via `HF_TOKEN` / `OPENAI_API_KEY`. |
 | **Production-shaped** | `Dockerfile` runs `healthcheck` at build time; `LICENSE` MIT; reproducible `requirements.txt`. |
 
@@ -128,6 +129,7 @@ Also included:
 
 - delayed feature effects,
 - stochastic/noisy market and feedback generation,
+- deterministic scenario shock events (`support_backlog`, `competitor_discount`, `incident_outage`, etc.),
 - realistic budget and runway constraints.
 
 ## Reward design (dense per step)
@@ -253,6 +255,7 @@ python inference.py
 | `--baseline-only` | Never call the LLM; use `heuristic_baseline_policy` only. |
 | `--json` | Print a single JSON summary on **stdout**; step logs on **stderr**. |
 | `-o FILE` / `BENCHMARK_OUTPUT` | Save the same JSON summary to a file. |
+| `--trace-dir DIR` | Write per-task trajectory traces (`*.jsonl`) + `summary_report.md` (default `artifacts/`). |
 | `--model NAME` | Chat model when a token is present (default `MODEL_NAME` or `gpt-4o-mini`). |
 
 ## Example output

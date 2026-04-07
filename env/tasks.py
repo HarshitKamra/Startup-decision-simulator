@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,8 @@ class TaskConfig:
     initial_price: float
     competitor_price: float
     initial_churn_rate: float
+    scenario_name: str = "saas_core"
+    shock_schedule: List[Dict[str, Any]] = field(default_factory=list)
 
 
 TASKS: Dict[str, TaskConfig] = {
@@ -35,6 +37,11 @@ TASKS: Dict[str, TaskConfig] = {
         initial_price=39.0,
         competitor_price=41.0,
         initial_churn_rate=0.15,
+        scenario_name="support_turbulence",
+        shock_schedule=[
+            {"step": 2, "kind": "support_backlog", "severity": 0.8},
+            {"step": 5, "kind": "word_of_mouth_bump", "severity": 0.6},
+        ],
     ),
     "medium_pricing_strategy": TaskConfig(
         task_id="medium_pricing_strategy",
@@ -51,6 +58,11 @@ TASKS: Dict[str, TaskConfig] = {
         initial_price=49.0,
         competitor_price=45.0,
         initial_churn_rate=0.13,
+        scenario_name="pricing_pressure",
+        shock_schedule=[
+            {"step": 3, "kind": "competitor_discount", "severity": 0.9},
+            {"step": 7, "kind": "cost_spike", "severity": 0.7},
+        ],
     ),
     "hard_startup_survival": TaskConfig(
         task_id="hard_startup_survival",
@@ -67,6 +79,12 @@ TASKS: Dict[str, TaskConfig] = {
         initial_price=44.0,
         competitor_price=42.0,
         initial_churn_rate=0.18,
+        scenario_name="runway_crisis",
+        shock_schedule=[
+            {"step": 2, "kind": "incident_outage", "severity": 0.7},
+            {"step": 8, "kind": "investor_delay", "severity": 0.85},
+            {"step": 11, "kind": "competitor_discount", "severity": 0.6},
+        ],
     ),
 }
 
