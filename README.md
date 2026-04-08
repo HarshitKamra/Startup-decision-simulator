@@ -1,4 +1,15 @@
+---
+title: Startup Decision Simulator
+emoji: 🚀
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+
+---
+
 # Startup Decision Simulator (Founder Agent Benchmark)
+
 
 A production-style OpenEnv benchmark where an agent acts like a startup founder and makes strategic decisions under realistic constraints: limited cash, churn pressure, user feedback quality, and competition.
 
@@ -14,6 +25,29 @@ python inference.py --baseline-only --json -o results.json   # artifact for lead
 ```
 
 CI (optional): push to GitHub and use `.github/workflows/ci.yml` — installs deps, compiles, runs `healthcheck`, uploads `benchmark-result.json`.
+
+## Deploying to Hugging Face Spaces
+
+This repository is configured for a Hugging Face `Docker` Space.
+
+Before submitting, add these variables in your Space settings:
+
+- `API_BASE_URL`: API endpoint for the LLM.
+- `MODEL_NAME`: model identifier used by `inference.py`.
+- `HF_TOKEN`: Hugging Face / provider API key.
+
+Recommended deployment flow:
+
+```bash
+git remote add hf https://huggingface.co/spaces/<username-or-org>/<space-name>
+git push hf main
+```
+
+After the push:
+
+- wait for the Docker build to finish,
+- verify the Space URL returns HTTP `200`,
+- verify the app responds to `reset()` for the pre-submission validator.
 
 ### Why this submission stands out
 

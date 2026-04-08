@@ -1,9 +1,8 @@
-import copy
 import logging
+from threading import Lock
 from typing import Any, Dict
 
-from fastapi import FastAPI, HTTPException, WebSocket
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel
 
 from env.environment import StartupDecisionEnv
@@ -14,8 +13,35 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Startup Decision Simulator OpenEnv API")
 
+_http_env = StartupDecisionEnv()
+_http_env_lock = Lock()
+
 class StepRequest(BaseModel):
     action: Dict[str, Any]
+
+def _serialize_step_result(env: StartupDecisionEnv, action: Dict[str, Any]) -> Dict[str, Any]:
+    obs, reward, done, info = env.step(action)
+    return {
+        "observation": obs.model_dump(),
+        "reward": reward.model_dump(),
+        "done": done,
+        "info": info,
+        "state": env.state(),
+    }
+
+@app.get("/")
+async def root():
+    return {
+        "status": "ok",
+        "service": "startup-decision-simulator",
+        "docs": {
+            "health": "/health",
+            "reset": "/reset",
+            "step": "/step",
+            "state": "/state",
+            "websocket": "/ws",
+        },
+    }
 
 @app.get("/health")
 async def health_check():
@@ -72,29 +98,25 @@ async def websocket_endpoint(websocket: WebSocket):
         except:
             pass
 
-# Optional stateless fallback routes for HTTP debug
+# HTTP routes for validator compatibility
 @app.post("/reset")
 async def http_reset():
-    # Because of stateless HTTP, this doesn't maintain session, but fulfills ping endpoints if they exist
-    env = StartupDecisionEnv()
-    obs = env.reset()
-    return {
-        "observation": obs.model_dump(),
-        "reward": None, 
-        "done": False, 
-        "info": {}
-    }
+    with _http_env_lock:
+        obs = _http_env.reset()
+        return {
+            "observation": obs.model_dump(),
+            "reward": None,
+            "done": False,
+            "info": {},
+            "state": _http_env.state(),
+        }
 
 @app.post("/step")
 async def http_step(req: StepRequest):
-    raise HTTPException(status_code=400, detail="Stateless HTTP mode not fully supported. Please use WebSocket (/ws) for stateful interaction.")
+    with _http_env_lock:
+        return _serialize_step_result(_http_env, req.action)
 
 @app.get("/state")
 async def http_state():
-    return {"state": "HTTP endpoints active."}
-
-# Additional openenv structural pings
-@app.get("/docs")
-async def get_docs():
-    # Will be intercepted by FastAPI naturally, just explicit note here
-    pass
+    with _http_env_lock:
+        return {"state": _http_env.state()}
