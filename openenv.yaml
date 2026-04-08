@@ -15,14 +15,14 @@ tasks:
     difficulty: easy
     description: Improve sentiment and churn; grader rewards balanced support usage and low invalid penalties.
     grader: env.grader:grade_easy
-    score_range: [0.0, 1.0]
+    score_range: [0.000001, 0.999999]
   - id: pricing_pressure
     difficulty: medium
     description: Balanced profit, revenue, and retention; Pareto-style grader reduces one-axis gaming.
     grader: env.grader:grade_medium
-    score_range: [0.0, 1.0]
+    score_range: [0.000001, 0.999999]
   - id: runway_crisis
     difficulty: hard
     description: Survival with partial credit; runway, growth, and churn under tight cash.
     grader: env.grader:grade_hard
-    score_range: [0.0, 1.0]
+    score_range: [0.000001, 0.999999]

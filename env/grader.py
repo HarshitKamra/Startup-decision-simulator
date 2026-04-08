@@ -10,9 +10,14 @@ from env.tasks import get_task_config
 import logging
 
 logger = logging.getLogger(__name__)
+OPEN_SCORE_EPS = 1e-6
 
 def clamp_01(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def clamp_open_01(value: float) -> float:
+    return max(OPEN_SCORE_EPS, min(1.0 - OPEN_SCORE_EPS, value))
 
 
 def _mean_invalid_penalty(founder_trajectory: List[Dict[str, Any]]) -> float:
@@ -91,7 +96,7 @@ def grade_easy(actions: Iterable[Dict[str, Any] | Action]) -> float:
     if sentiment_delta <= 0 and not _terminal_failure(company_state):
         score *= 0.85
 
-    return round(clamp_01(score), 6)
+    return round(clamp_open_01(score), 6)
 
 
 def grade_medium(actions: Iterable[Dict[str, Any] | Action]) -> float:
@@ -124,7 +129,7 @@ def grade_medium(actions: Iterable[Dict[str, Any] | Action]) -> float:
     if company_state["churn_rate"] > cfg.initial_churn_rate + 0.02:
         score *= 0.88
 
-    return round(clamp_01(score), 6)
+    return round(clamp_open_01(score), 6)
 
 
 def grade_hard(actions: Iterable[Dict[str, Any] | Action]) -> float:
@@ -173,7 +178,7 @@ def grade_hard(actions: Iterable[Dict[str, Any] | Action]) -> float:
     if not alive:
         score *= 0.72
 
-    return round(clamp_01(score), 6)
+    return round(clamp_open_01(score), 6)
 
 
 def _grade_task_impl(task_id: str, actions: Iterable[Dict[str, Any] | Action]) -> float:
@@ -190,4 +195,4 @@ def grade_task(task_id: str, actions: Iterable[Dict[str, Any] | Action]) -> floa
         return _grade_task_impl(task_id, actions)
     except Exception as e:
         logger.warning(f"Malformed input or trajectory failure: {e}")
-        return 0.0
+        return OPEN_SCORE_EPS
