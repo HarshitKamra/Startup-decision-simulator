@@ -10,7 +10,7 @@ from env.tasks import get_task_config
 import logging
 
 logger = logging.getLogger(__name__)
-OPEN_SCORE_EPS = 1e-6
+OPEN_SCORE_EPS = 1e-3
 
 def clamp_01(value: float) -> float:
     return max(0.0, min(1.0, value))
