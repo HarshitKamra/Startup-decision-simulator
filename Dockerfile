@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11.9-slim
 
 WORKDIR /app
 
@@ -12,4 +12,5 @@ COPY . /app
 
 RUN python scripts/healthcheck.py
 
-CMD ["python", "inference.py"]
+EXPOSE 7860
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]

@@ -16,10 +16,9 @@ from env.grader import grade_task
 from env.policies import RUBRIC_HINTS, heuristic_baseline_policy
 from env.tasks import TASKS, get_task_config
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN = os.getenv("HF_TOKEN")
-# Optional if your evaluator uses local docker image mode.
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
 LogFn = Callable[..., None]
@@ -27,7 +26,7 @@ LogFn = Callable[..., None]
 
 def build_client() -> OpenAI | None:
     base_url = API_BASE_URL
-    token = HF_TOKEN or os.getenv("OPENAI_API_KEY", "")
+    token = HF_TOKEN
     if not token:
         return None
     return OpenAI(base_url=base_url, api_key=token)
@@ -95,7 +94,7 @@ def run_task(
     decision_lifts: List[float] = []
     trace: List[Dict[str, Any]] = []
 
-    log(f"[START] task={task_id} seed={cfg.seed} max_steps={cfg.max_steps}")
+    log(f"[START] task={task_id} env=startup-decision-simulator model={model_name}")
     for step in range(cfg.max_steps):
         obs_dict = obs.model_dump()
         action = get_action_from_model(client, model_name, task_id, obs_dict, step, action_history)
@@ -108,7 +107,7 @@ def run_task(
         decision_lifts.append(lift)
         trace.append(
             {
-                "step": step,
+                "step": step + 1,
                 "task_id": task_id,
                 "scenario_name": cfg.scenario_name,
                 "action": action,
@@ -119,17 +118,29 @@ def run_task(
                 "info": info,
             }
         )
+        
+        action_str = str(action.get('action_type'))
+        if "payload" in action:
+            action_str += f"('{action['payload']}')"
+        elif "value" in action:
+            action_str += f"({action['value']})"
+            
+        error_msg = info.get("action_note", "")
+        if not error_msg:
+            error_msg = "null"
+            
         log(
-            f"[STEP] task={task_id} step={step} action={action.get('action_type')} "
-            f"reward={reward.total:.6f} cash={obs.cash:.2f} users={obs.users} "
-            f"churn={obs.churn_rate:.4f} info={info.get('action_note', '')} "
-            f"penalty={info.get('invalid_penalty', 0.0)}"
+            f"[STEP] step={step + 1} action={action_str} reward={reward.total:.2f} "
+            f"done={'true' if done else 'false'} error={error_msg}"
         )
         if done:
             break
 
     score = grade_task(task_id, action_history)
-    log(f"[END] task={task_id} score={score:.6f} steps={len(action_history)}")
+    success_str = "true" if score > 0.0 else "false"
+    rewards_csv = ",".join([f"{t['reward']['total']:.2f}" for t in trace])
+    log(f"[END] success={success_str} steps={len(action_history)} score={score:.2f} rewards={rewards_csv}")
+    
     return {
         "task_id": task_id,
         "scenario_name": cfg.scenario_name,

@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 RUBRIC_HINTS: Dict[str, str] = {
-    "easy_support_optimization": (
+    "support_turbulence": (
         "Maximize sentiment_score improvement and churn reduction; use respond_to_feedback only when "
         "support_cooldown_steps==0; mix actions to avoid loop penalties."
     ),
-    "medium_pricing_strategy": (
+    "pricing_pressure": (
         "Balance cash, revenue, and churn—the grader uses a Pareto-style blend; avoid collapse and one-axis gaming."
     ),
-    "hard_startup_survival": (
+    "runway_crisis": (
         "Survive to max_steps with users>5 and cash>0; protect runway_opex_steps; grow users and cut churn without reckless spend."
     ),
 }
@@ -45,7 +45,7 @@ def heuristic_baseline_policy(
     def can_respond() -> bool:
         return support_cd <= 0 and cash > 1100
 
-    if task_id == "easy_support_optimization":
+    if task_id in ("support_turbulence", "easy_support_optimization"):
         crisis = churn > 0.14 or sentiment < -0.05 or any(
             w in feedback for w in ("too long", "unhappy", "bugs", "risk")
         )
@@ -57,7 +57,7 @@ def heuristic_baseline_policy(
             return {"action_type": "run_marketing", "value": 850.0}
         return avoid_repeat({"action_type": "adjust_price", "value": max(24.0, min(80.0, competitor_price - 0.8))})
 
-    if task_id == "medium_pricing_strategy":
+    if task_id in ("pricing_pressure", "medium_pricing_strategy"):
         alerts = set(observation.get("current_alerts", []))
         under_discount_pressure = "competitor_discount" in alerts
         under_cost_spike = "cost_spike" in alerts
@@ -100,7 +100,13 @@ def heuristic_baseline_policy(
         bounded_target = max(current_price - max_step_change, min(current_price + max_step_change, target))
         return avoid_repeat({"action_type": "adjust_price", "value": max(27.0, min(88.0, bounded_target))})
 
-    if task_id == "hard_startup_survival":
+    if task_id in ("hard_startup_survival", "runway_crisis"):
+        alerts = observation.get("current_alerts", [])
+        if step == 1:
+            auth_code = next((a.split("'")[1] for a in alerts if "URGENT:" in a and "'" in a), None)
+            if auth_code:
+                return {"action_type": "respond_to_feedback", "payload": auth_code}
+
         if (churn > 0.155 or sentiment < -0.12) and can_respond():
             return {"action_type": "respond_to_feedback", "payload": "critical_support"}
         if requests and cash > 5500 and churn > 0.12 and runway > 4.0 and step <= 7 and last_action != "add_feature":

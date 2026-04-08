@@ -25,6 +25,12 @@ CI (optional): push to GitHub and use `.github/workflows/ci.yml` — installs de
 | **Works without secrets** | **Heuristic baseline** in `env/policies.py` scores strongly; LLM is optional via `HF_TOKEN` / `OPENAI_API_KEY`. |
 | **Production-shaped** | `Dockerfile` runs `healthcheck` at build time; `LICENSE` MIT; reproducible `requirements.txt`. |
 
+## Design decisions
+
+- **Why the observation space is structured this way:** We chose to expose operational stress factors—like `runway_opex_steps` and `support_cooldown_steps`—because pure financial metrics don't capture the constraints founders actually operate under. An agent must balance long-term survival against short-term support burnout.
+- **Why the reward is decomposed:** We chose to split the reward into distinct components (growth velocity, customer satisfaction, and execution penalties) because it allows us to heavily penalize "idle camping" (e.g. spamming `do_nothing`) and malformed schemas, while independently rewarding balanced strategic choices.
+- **Why the hard task is genuinely hard:** We chose to inject a multi-step dependency (an emergency vendor code) into the observation stream because it prevents single-pass LLM guessing. The agent must read a critical alert at Step 1 and apply its exact payload in Step 2 to secure credit, proving it can maintain context across the trajectory.
+
 ## Why this benchmark matters
 
 Real startup execution is a sequence of constrained trade-offs, not a single correct answer. This environment tests whether an agent can:
@@ -168,28 +174,28 @@ The environment adds structured penalties (rolled into `invalid_or_bad_actions`,
 
 ## Tasks (easy -> medium -> hard)
 
-### 1) Easy: Customer Support Optimization
+### 1) Support Turbulence (`support_turbulence`)
 
 - Goal: improve sentiment from feedback and reduce churn pressure.
-- Grader (`grade_easy`) uses deterministic:
+- Grader uses deterministic:
   - sentiment improvement vs. start,
   - final churn quality,
-  - subtracts mean per-step **invalid / bad-action** penalties from the trajectory,
+  - multiplicative penalty for **invalid / bad-action** schemas,
   - small **diversity** bonus for balanced `respond_to_feedback` share,
   - heavy discount if the company **collapses** (cash/users) or sentiment does not improve.
 - Score range: `[0.0, 1.0]`
 
-### 2) Medium: Pricing Strategy
+### 2) Pricing Pressure (`pricing_pressure`)
 
 - Goal: balance revenue/profit while avoiding churn spikes.
-- Grader (`grade_medium`) uses deterministic:
+- Grader uses deterministic:
   - **geometric blend** of profit, revenue, and churn reduction (rewards **balance**, not one-axis spikes),
   - **harmony** term (penalizes lopsided outcomes),
   - churn regression penalty,
-  - mean invalid penalty from the trajectory.
+  - multiplicative invalid penalty floors the score for broken schemas.
 - Score range: `[0.0, 1.0]`
 
-### 3) Hard: Startup Survival Scenario
+### 3) Runway Crisis (`runway_crisis`)
 
 - Goal: survive the horizon with low runway while optimizing growth/churn.
 - Grader (`grade_hard`) uses deterministic:
@@ -261,11 +267,11 @@ python inference.py
 ## Example output
 
 ```text
-[START] task=easy_support_optimization seed=11 max_steps=8
-[STEP] task=easy_support_optimization step=0 action=respond_to_feedback reward=0.041232 cash=2034.00 users=83 churn=0.0910 info=feedback_addressed
-[STEP] task=easy_support_optimization step=1 action=add_feature reward=0.016812 cash=1056.00 users=79 churn=0.0732 info=feature_added_mobile_app
-[END] task=easy_support_optimization score=0.744100 steps=8
-[END] aggregate_score=0.682743 scores={"easy_support_optimization":0.7441,"hard_startup_survival":0.61205,"medium_pricing_strategy":0.692079}
+[START] task=support_turbulence seed=11 max_steps=8
+[STEP] task=support_turbulence step=0 action=respond_to_feedback reward=0.041232 cash=2034.00 users=83 churn=0.0910 info=feedback_addressed penalty=0.0
+[STEP] task=support_turbulence step=1 action=add_feature reward=0.016812 cash=1056.00 users=79 churn=0.0732 info=feature_added_mobile_app penalty=0.0
+[END] task=support_turbulence score=0.744100 steps=8
+[END] aggregate_score=0.682743 scores={"support_turbulence":0.7441,"runway_crisis":0.61205,"pricing_pressure":0.692079}
 ```
 
 ## Validation targets

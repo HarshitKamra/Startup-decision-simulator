@@ -22,8 +22,8 @@ class TaskConfig:
 
 
 TASKS: Dict[str, TaskConfig] = {
-    "easy_support_optimization": TaskConfig(
-        task_id="easy_support_optimization",
+    "support_turbulence": TaskConfig(
+        task_id="support_turbulence",
         name="Customer Support Optimization",
         difficulty="easy",
         description=(
@@ -43,8 +43,8 @@ TASKS: Dict[str, TaskConfig] = {
             {"step": 5, "kind": "word_of_mouth_bump", "severity": 0.6},
         ],
     ),
-    "medium_pricing_strategy": TaskConfig(
-        task_id="medium_pricing_strategy",
+    "pricing_pressure": TaskConfig(
+        task_id="pricing_pressure",
         name="Pricing Strategy",
         difficulty="medium",
         description=(
@@ -64,8 +64,8 @@ TASKS: Dict[str, TaskConfig] = {
             {"step": 7, "kind": "cost_spike", "severity": 0.7},
         ],
     ),
-    "hard_startup_survival": TaskConfig(
-        task_id="hard_startup_survival",
+    "runway_crisis": TaskConfig(
+        task_id="runway_crisis",
         name="Startup Survival Scenario",
         difficulty="hard",
         description=(

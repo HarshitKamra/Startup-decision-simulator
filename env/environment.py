@@ -97,6 +97,7 @@ class StartupDecisionEnv:
             step = int(event.get("step", -1))
             if step >= 0:
                 self._shocks_by_step.setdefault(step, []).append(event)
+        self.secret_auth_code = f"auth_{self._rng.randint(100, 999)}"
 
     def _sample_feedback(self, size: int = 2) -> List[str]:
         feedback: List[str] = []
@@ -171,6 +172,9 @@ class StartupDecisionEnv:
         steps_rem = max(0, self.max_steps - self.step_count)
         sup_cd = max(0, self._feedback_skip_until_step - self.step_count)
         opex = 600.0
+        alerts = copy.deepcopy(self.current_alerts)
+        if self.scenario_name in ("hard_startup_survival", "runway_crisis") and self.step_count == 1:
+            alerts.append(f"URGENT: Next support payload must be exactly '{self.secret_auth_code}' to secure emergency credit.")
         return Observation(
             cash=round(self.cash, 2),
             users=self.users,
@@ -180,7 +184,7 @@ class StartupDecisionEnv:
             customer_feedback=copy.deepcopy(self.customer_feedback),
             competitor_price=round(self.competitor_price, 2),
             feature_requests=copy.deepcopy(self.feature_requests),
-            current_alerts=copy.deepcopy(self.current_alerts),
+            current_alerts=alerts,
             step_count=self.step_count,
             max_steps=self.max_steps,
             sentiment_score=round(self._sentiment_score(), 4),
@@ -247,10 +251,10 @@ class StartupDecisionEnv:
 
         # Edge: already bankrupt or no users — no meaningful action (terminal).
         if self.cash <= 0:
-            reward_obj = self._compute_reward(invalid_or_bad_actions=1.0)
+            reward_obj = self._compute_reward(action, invalid_or_bad_actions=1.0)
             return self._build_observation(), reward_obj, True, {"reason": "already_bankrupt", "terminal_reason": "bankrupt"}
         if self.users <= 0:
-            reward_obj = self._compute_reward(invalid_or_bad_actions=1.0)
+            reward_obj = self._compute_reward(action, invalid_or_bad_actions=1.0)
             return self._build_observation(), reward_obj, True, {"reason": "no_users", "terminal_reason": "user_collapse"}
 
         self._last_users = self.users
@@ -488,7 +492,7 @@ class StartupDecisionEnv:
             self.customer_feedback = self._sample_feedback(size=3)
             self.feature_requests = self._sample_feature_requests(size=3)
 
-        reward_obj = self._compute_reward(invalid_or_bad_actions=invalid_or_bad)
+        reward_obj = self._compute_reward(action, invalid_or_bad_actions=invalid_or_bad)
         self.step_count += 1
 
         done = self.step_count >= self.max_steps or self.cash <= 0 or self.users <= 5
@@ -518,24 +522,32 @@ class StartupDecisionEnv:
 
         return self._build_observation(), reward_obj, done, info
 
-    def _compute_reward(self, invalid_or_bad_actions: float) -> Reward:
+    def _score_growth_velocity(self) -> float:
         user_growth = (self.users - self._last_users) / max(1, self._last_users)
         revenue_change = (self.revenue - self._last_revenue) / max(1.0, self._last_revenue)
-        sentiment_score = self._sentiment_score()
-        churn_penalty = self.churn_rate
+        return 0.3 * user_growth + 0.2 * revenue_change
 
-        total = (
-            0.3 * user_growth
-            + 0.2 * revenue_change
-            - 0.3 * churn_penalty
-            + 0.2 * sentiment_score
-            - 0.2 * invalid_or_bad_actions
-        )
+    def _score_customer_satisfaction(self) -> float:
+        return 0.2 * self._sentiment_score() - 0.3 * self.churn_rate
+
+    def _score_execution_penalties(self, action: Action, base_invalid: float) -> float:
+        penalty = 0.2 * base_invalid
+        if action.action_type == "do_nothing" and self._action_streak >= 2:
+            penalty += 0.4
+        return penalty
+
+    def _compute_reward(self, action: Action, invalid_or_bad_actions: float) -> Reward:
+        growth = self._score_growth_velocity()
+        satisfaction = self._score_customer_satisfaction()
+        penalty = self._score_execution_penalties(action, invalid_or_bad_actions)
+        
+        total = growth + satisfaction - penalty
+
         return Reward(
             total=round(total, 6),
-            user_growth=round(user_growth, 6),
-            revenue_change=round(revenue_change, 6),
-            churn_penalty=round(churn_penalty, 6),
-            sentiment_score=round(sentiment_score, 6),
+            user_growth=round((self.users - self._last_users) / max(1, self._last_users), 6),
+            revenue_change=round((self.revenue - self._last_revenue) / max(1.0, self._last_revenue), 6),
+            churn_penalty=round(self.churn_rate, 6),
+            sentiment_score=round(self._sentiment_score(), 6),
             invalid_or_bad_actions=round(invalid_or_bad_actions, 6),
         )

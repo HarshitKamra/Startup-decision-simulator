@@ -85,6 +85,9 @@ def main() -> int:
             if done:
                 break
         s = grade_task(tid, actions)
+        s_replay = grade_task(tid, actions)
+        if s != s_replay:
+            errors.append(f"{tid}: grader is non-deterministic (got {s} then {s_replay})")
         if not 0.0 <= s <= 1.0:
             errors.append(f"{tid}: grade {s} out of range")
     # Weak baseline should score lower on average than heuristic (sanity)
@@ -134,6 +137,13 @@ def main() -> int:
     _, r, _, info = env.step({"action_type": "adjust_price"})  # missing value
     if r.invalid_or_bad_actions < 0.5:
         errors.append("invalid schema should increase invalid_or_bad_actions")
+
+    # [CHECKLIST] Verify reset() explicitly re-assigns mutable internal state
+    env = StartupDecisionEnv()
+    obs1 = env.reset()
+    env.step({"action_type": "adjust_price", "value": 150.0})
+    obs2 = env.reset()
+    assert obs1.model_dump() == obs2.model_dump(), "reset() did not clear state parities"
 
     if errors:
         print("HEALTHCHECK FAILED:", file=sys.stderr)
