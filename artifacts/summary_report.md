@@ -1,6 +1,6 @@
 # Startup Decision Simulator Benchmark Report
 
-- Generated (UTC): 2026-04-08T19:56:28.586856+00:00
+- Generated (UTC): 2026-04-08T20:09:25.320163+00:00
 - Mode: heuristic
 - Aggregate score: 0.718139
 - Avg decision lift vs do_nothing: 0.092424
