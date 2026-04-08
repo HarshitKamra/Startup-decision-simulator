@@ -16,20 +16,17 @@ from env.grader import grade_task
 from env.policies import RUBRIC_HINTS, heuristic_baseline_policy
 from env.tasks import TASKS, get_task_config
 
-API_BASE_URL = os.getenv("API_BASE_URL")
-MODEL_NAME = os.getenv("MODEL_NAME")
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+BENCHMARK_NAME = "startup-decision-simulator"
 
 LogFn = Callable[..., None]
 
 
 def build_client() -> OpenAI | None:
-    missing = [name for name, value in (
-        ("API_BASE_URL", API_BASE_URL),
-        ("MODEL_NAME", MODEL_NAME),
-        ("HF_TOKEN", HF_TOKEN),
-    ) if not value]
+    missing = [name for name, value in (("HF_TOKEN", HF_TOKEN),) if not value]
     if missing:
         raise RuntimeError(
             "Missing required environment variables for LLM mode: "
@@ -100,65 +97,69 @@ def run_task(
     decision_lifts: List[float] = []
     trace: List[Dict[str, Any]] = []
 
-    log(f"[START] task={task_id} seed={cfg.seed} max_steps={cfg.max_steps}")
-    for step in range(cfg.max_steps):
-        obs_dict = obs.model_dump()
-        action = get_action_from_model(client, model_name, task_id, obs_dict, step, action_history)
-        action_history.append(action)
-        cf_env = copy.deepcopy(env)
-        _, cf_reward, _, _ = cf_env.step({"action_type": "do_nothing"})
-        obs, reward, done, info = env.step(action)
-        sum_reward += reward.total
-        lift = reward.total - cf_reward.total
-        decision_lifts.append(lift)
-        trace.append(
-            {
-                "step": step + 1,
-                "task_id": task_id,
-                "scenario_name": cfg.scenario_name,
-                "action": action,
-                "reward": reward.model_dump(),
-                "counterfactual_do_nothing_reward": cf_reward.total,
-                "decision_lift": round(lift, 6),
-                "observation": obs.model_dump(),
-                "info": info,
-            }
-        )
-        
-        action_str = str(action.get('action_type'))
-        if "payload" in action:
-            action_str += f"('{action['payload']}')"
-        elif "value" in action:
-            action_str += f"({action['value']})"
-            
-        error_msg = info.get("action_note", "")
-        if not error_msg:
-            error_msg = "null"
-            
-        log(
-            f"[STEP] task={task_id} step={step} action={action_str} "
-            f"reward={reward.total:.6f} cash={obs.cash:.2f} users={obs.users} "
-            f"churn={obs.churn_rate:.4f} info={error_msg} penalty={reward.invalid_or_bad_actions:.1f}"
-        )
-        if done:
-            break
+    log(f"[START] task={task_id} env={BENCHMARK_NAME} model={model_name}")
+    rewards_csv_parts: List[str] = []
+    success = False
+    try:
+        for step in range(cfg.max_steps):
+            obs_dict = obs.model_dump()
+            action = get_action_from_model(client, model_name, task_id, obs_dict, step, action_history)
+            action_history.append(action)
+            cf_env = copy.deepcopy(env)
+            _, cf_reward, _, _ = cf_env.step({"action_type": "do_nothing"})
+            obs, reward, done, info = env.step(action)
+            sum_reward += reward.total
+            lift = reward.total - cf_reward.total
+            decision_lifts.append(lift)
+            trace.append(
+                {
+                    "step": step + 1,
+                    "task_id": task_id,
+                    "scenario_name": cfg.scenario_name,
+                    "action": action,
+                    "reward": reward.model_dump(),
+                    "counterfactual_do_nothing_reward": cf_reward.total,
+                    "decision_lift": round(lift, 6),
+                    "observation": obs.model_dump(),
+                    "info": info,
+                }
+            )
 
-    score = grade_task(task_id, action_history)
-    log(f"[END] task={task_id} score={score:.6f} steps={len(action_history)}")
-    
-    return {
-        "task_id": task_id,
-        "scenario_name": cfg.scenario_name,
-        "score": score,
-        "steps": len(action_history),
-        "sum_reward": round(sum_reward, 6),
-        "avg_decision_lift": round(sum(decision_lifts) / max(1, len(decision_lifts)), 6),
-        "seed": cfg.seed,
-        "max_steps": cfg.max_steps,
-        "llm_used": client is not None,
-        "model_name": model_name if client else None,
-        "trace": trace,
-    }
+            action_str = str(action.get("action_type"))
+            if "payload" in action:
+                action_str += f"('{action['payload']}')"
+            elif "value" in action:
+                action_str += f"({action['value']})"
+
+            error_msg = info.get("action_note") or "null"
+            rewards_csv_parts.append(f"{reward.total:.2f}")
+            log(
+                f"[STEP] step={step + 1} action={action_str} reward={reward.total:.2f} "
+                f"done={'true' if done else 'false'} error={error_msg}"
+            )
+            if done:
+                break
+        score = grade_task(task_id, action_history)
+        success = score > 0.0
+        return {
+            "task_id": task_id,
+            "scenario_name": cfg.scenario_name,
+            "score": score,
+            "steps": len(action_history),
+            "sum_reward": round(sum_reward, 6),
+            "avg_decision_lift": round(sum(decision_lifts) / max(1, len(decision_lifts)), 6),
+            "seed": cfg.seed,
+            "max_steps": cfg.max_steps,
+            "llm_used": client is not None,
+            "model_name": model_name if client else None,
+            "trace": trace,
+        }
+    finally:
+        score = grade_task(task_id, action_history) if action_history else 0.0
+        log(
+            f"[END] success={'true' if success else 'false'} steps={len(action_history)} "
+            f"score={score:.3f} rewards={','.join(rewards_csv_parts)}"
+        )
 
 
 def main() -> None:
@@ -189,8 +190,6 @@ def main() -> None:
         log = print
 
     model_name = args.model
-    if not args.baseline_only and not model_name:
-        raise RuntimeError("MODEL_NAME must be set for LLM mode.")
     client: OpenAI | None = None if args.baseline_only else build_client()
 
     rows: List[Dict[str, Any]] = []
@@ -199,8 +198,6 @@ def main() -> None:
 
     scores = {r["task_id"]: r["score"] for r in rows}
     average = sum(scores.values()) / len(scores)
-    log(f"[END] aggregate_score={average:.6f} scores={json.dumps(scores, sort_keys=True)}")
-
     public_rows = [{k: v for k, v in row.items() if k != "trace"} for row in rows]
     summary = {
         "project": "startup-decision-simulator",
